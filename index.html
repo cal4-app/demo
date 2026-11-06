@@ -1,0 +1,1514 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Calendario inteligente</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@500;600&family=Nunito+Sans:wght@400;500;600;700&display=swap">
+<style>
+  /* Layout: barra superior (ir a hoy, navegación, título, ajustes) y una grilla de semanas que ocupa el resto de la pantalla.
+     Encima: ventana de nota (cuadrada) y tablero del día (horizontal). Notas en pasteles apagados sobre grises neutros. */
+  :root {
+    --r-s: 7px;
+    --r-m: 10px;
+    --r-l: 16px;
+    --font-title: 'EB Garamond', Georgia, 'Times New Roman', serif;
+    --font: 'Nunito Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #6b6b6b;
+    --line: #e2e2e2;
+    --line-strong: #a6a6a6;
+    --weekend: #eeeeee;
+    --accent: #1a1a1a;
+    --accent-fg: #ffffff;
+    --shadow: 0 6px 24px rgba(0, 0, 0, .14);
+    --scrim: rgba(20, 20, 20, .3);
+    --n-celeste: #cfe3f1;
+    --n-rosa: #f1d4dc;
+    --n-amarillo: #f3e7b3;
+    --n-naranja: #f4d9bb;
+    --n-verde: #d4e6d0;
+    --n-violeta: #dcd4ec;
+    --note-ink: #1d1d1d;
+    --pure: #000000;
+    --pure-inv: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121212;
+      --surface: #1a1a1a;
+      --fg: #e8e8e8;
+      --muted: #8c8c8c;
+      --line: #2c2c2c;
+      --line-strong: #525252;
+      --weekend: #242424;
+      --accent: #e8e8e8;
+      --accent-fg: #121212;
+      --shadow: 0 6px 24px rgba(0, 0, 0, .55);
+      --scrim: rgba(0, 0, 0, .55);
+      --n-celeste: #b4cddd;
+      --n-rosa: #dbb9c4;
+      --n-amarillo: #dfd29b;
+      --n-naranja: #e0c2a1;
+      --n-verde: #b9d0b5;
+      --n-violeta: #c5bcd9;
+      --note-ink: #1a1a1a;
+      --pure: #ffffff;
+      --pure-inv: #000000;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121212;
+    --surface: #1a1a1a;
+    --fg: #e8e8e8;
+    --muted: #8c8c8c;
+    --line: #2c2c2c;
+    --line-strong: #525252;
+    --weekend: #242424;
+    --accent: #e8e8e8;
+    --accent-fg: #121212;
+    --shadow: 0 6px 24px rgba(0, 0, 0, .55);
+    --scrim: rgba(0, 0, 0, .55);
+    --n-celeste: #b4cddd;
+    --n-rosa: #dbb9c4;
+    --n-amarillo: #dfd29b;
+    --n-naranja: #e0c2a1;
+    --n-verde: #b9d0b5;
+    --n-violeta: #c5bcd9;
+    --note-ink: #1a1a1a;
+    --pure: #ffffff;
+    --pure-inv: #000000;
+    color-scheme: dark;
+  }
+
+  html { box-sizing: border-box; height: 100%; }
+  *, *::before, *::after { box-sizing: inherit; }
+  [hidden] { display: none !important; }
+  body {
+    height: 100%;
+    margin: 0;
+    padding-block: 12px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* Barra superior */
+  .bar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .bar-left { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; flex: 1; }
+  .nav { display: flex; gap: 2px; }
+  h1 {
+    margin: 0 0 0 4px;
+    font-family: var(--font-title);
+    font-size: 21px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .btn {
+    font: inherit;
+    font-weight: 500;
+    height: 32px;
+    padding: 0 12px;
+    color: var(--fg);
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-m);
+    cursor: pointer;
+  }
+  .btn:hover:not(:disabled) { background: var(--weekend); }
+  .btn:disabled { color: var(--muted); background: transparent; border-color: var(--line); opacity: .75; cursor: default; }
+  .icon {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-grid;
+    place-items: center;
+    color: inherit;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-m);
+    cursor: pointer;
+  }
+  .icon:hover { background: var(--weekend); border-color: var(--line); }
+
+  /* Texto que aparece al pasar el mouse por un botón con solo ícono (un único elemento, así no lo recorta ninguna celda) */
+  .tip {
+    position: fixed;
+    z-index: 100;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--surface);
+    background: var(--fg);
+    border-radius: var(--r-s);
+    pointer-events: none;
+  }
+
+  /* Panel de configuración */
+  .settings-wrap { position: relative; flex: none; }
+  .panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 20;
+    width: min(300px, calc(100vw - 32px));
+    max-height: calc(100dvh - 90px);
+    overflow: auto;
+    display: grid;
+    gap: 16px;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-l);
+    box-shadow: var(--shadow);
+  }
+  fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+  legend, .label { display: block; padding: 0; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .syncrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .syncrow .hint { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hint { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid var(--line-strong); border-radius: var(--r-m); overflow: hidden; }
+  .seg label { position: relative; cursor: pointer; }
+  .seg input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+  .seg span { display: block; padding: 6px 4px; text-align: center; font-size: 13px; border-right: 1px solid var(--line); }
+  .seg label:last-child span { border-right: 0; }
+  .seg label:hover input:not(:checked) + span { background: var(--weekend); }
+  .seg input:checked + span { background: var(--accent); color: var(--accent-fg); }
+  .seg input:focus-visible + span { outline: 2px solid var(--fg); outline-offset: -3px; }
+  select {
+    width: 100%;
+    height: 32px;
+    padding: 0 8px;
+    font: inherit;
+    color: var(--fg);
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-m);
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    height: 28px;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 12px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-m);
+    cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { color: var(--accent-fg); background: var(--accent); border-color: var(--accent); }
+
+  /* Calendario */
+  .cal {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-l);
+    overflow: hidden;
+    user-select: none;
+    touch-action: none;
+    outline: none;
+  }
+  .head, .grid { display: grid; grid-template-columns: repeat(var(--cols, 7), minmax(0, 1fr)); }
+  .head { border-bottom: 1px solid var(--line-strong); }
+  .hd {
+    padding: 6px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-right: 1px solid var(--line);
+  }
+  .hd:last-child { border-right: 0; }
+  .hd.we { background: var(--weekend); }
+  .gridwrap { flex: 1; min-height: 0; position: relative; overflow: hidden; margin-bottom: -1px; }
+  /* Pista de filas un poco más alta que la ventana; se mueve con transform para que el desplazamiento sea continuo */
+  .grid {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: calc(var(--rowh, 96px) * var(--n, 6));
+    grid-template-rows: repeat(var(--n, 6), var(--rowh, 96px));
+    will-change: transform;
+  }
+  .cell {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    padding: 6px 8px;
+    overflow: hidden;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+  }
+  .cell.lc { border-right: 0; }
+  .cell.we { background: var(--weekend); }
+  /* Un trazo más grueso marca el cambio de mes */
+  .cell.mt { box-shadow: inset 0 2px 0 var(--line-strong); }
+  .cell.ml { box-shadow: inset 2px 0 0 var(--line-strong); }
+  .cell.mt.ml { box-shadow: inset 0 2px 0 var(--line-strong), inset 2px 0 0 var(--line-strong); }
+  .num {
+    display: inline-grid;
+    place-items: center;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 6px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+  .cell:not(.today) .num:hover { background: var(--line); }
+  .cell.we .num { color: var(--muted); }
+  .cell.first .num { font-weight: 600; }
+  .cell.today .num { color: var(--accent-fg); background: var(--accent); }
+  .cell.today .num:hover { opacity: .85; }
+
+  /* Botón (+) de la celda */
+  .add {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 6;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    color: var(--pure-inv);
+    background: var(--pure);
+    border: 1px solid var(--pure);
+    border-radius: 50%;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .12s;
+  }
+  .add .i { width: 12px; height: 12px; stroke-width: 2; }
+  .cell:hover .add, .add:focus-visible { opacity: 1; }
+  .cell:hover .add:hover { opacity: .85; }
+  @media (hover: none) { .add { opacity: .7; } }
+
+  /* Pila de notas en la celda: se ven las tres últimas */
+  .stack { position: absolute; left: 6px; right: 6px; top: 32px; bottom: 6px; pointer-events: none; container-type: size; }
+  .note {
+    --s: min(calc(100cqw - 6px), calc(100cqh - 24px), 130px);
+    position: absolute;
+    bottom: 0;
+    left: calc(50% - var(--s) / 2);
+    width: var(--s);
+    height: var(--s);
+    z-index: calc(4 - var(--d));
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin: 0;
+    padding: 4px 7px;
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.3;
+    text-align: left;
+    color: var(--note-ink);
+    background: var(--c);
+    border: 0;
+    border-radius: var(--r-s);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .07), 0 1px 3px rgba(0, 0, 0, .22);
+    transform: translateY(calc(var(--d) * -7px)) rotate(var(--rot, 0deg));
+    transition: transform .18s cubic-bezier(.3, .7, .3, 1), box-shadow .18s;
+    overflow: hidden;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+  .note:hover, .note:focus-visible { transform: translateY(calc(var(--d) * -7px - 3px)) rotate(0deg) scale(1.05); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .07), 0 6px 12px rgba(0, 0, 0, .28); }
+  .note:focus-visible { outline: 2px solid var(--fg); outline-offset: 1px; }
+  .note .t { display: block; font-family: var(--font-title); font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .note .x { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+  .note.ht .x { -webkit-line-clamp: 1; }
+  .more { position: absolute; right: 2px; bottom: 0; z-index: 5; height: 16px; padding: 0 2px; display: inline-grid; place-items: center; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); }
+  /* Días pasados tachados (opción): diagonal tenue del vértice superior derecho al inferior izquierdo */
+  .cal.strike .cell.past::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .4; background: var(--line-strong); clip-path: polygon(100% 0, 100% 3px, 0 100%, 0 calc(100% - 3px)); }
+  /* "Ir a esta semana" resalta (contraste invertido) cuando se puede usar */
+  #goToday:not(:disabled) { color: var(--accent-fg); background: var(--accent); border-color: var(--accent); }
+  #goToday:not(:disabled):hover { background: var(--accent); opacity: .88; }
+  .warn { margin: 0; padding: 6px 12px; font-size: 12px; color: var(--muted); background: var(--weekend); border-radius: var(--r-s); }
+  /* La nota nueva cae sobre el día como una hoja de papel */
+  @keyframes paper {
+    0%   { opacity: 0; transform: translateY(calc(var(--d) * -7px - 24px)) rotate(calc(var(--rot, 0deg) - 7deg)) scale(1.1); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .07), 0 8px 14px rgba(0, 0, 0, .2); }
+    45%  { opacity: 1; }
+    75%  { transform: translateY(calc(var(--d) * -7px + 2px)) rotate(calc(var(--rot, 0deg) + .6deg)) scale(1); }
+    100% { opacity: 1; transform: translateY(calc(var(--d) * -7px)) rotate(var(--rot, 0deg)) scale(1); }
+  }
+  .note.new { animation: paper .46s cubic-bezier(.2, .7, .25, 1) backwards; }
+
+  /* Ventanas */
+  .layer { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; }
+  #noteLayer { z-index: 60; }
+  .scrim { position: absolute; inset: 0; background: var(--scrim); }
+  .dialog {
+    --dlg-bg: var(--surface);
+    --ink: var(--fg);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    color: var(--ink);
+    background: var(--dlg-bg);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-l);
+    box-shadow: var(--shadow);
+    animation: pop .14s ease-out;
+  }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+  .dialog .icon:hover { background: rgba(128, 128, 128, .2); border-color: transparent; }
+  .dialog .btn.primary { color: var(--dlg-bg); background: var(--ink); border-color: var(--ink); }
+  .dialog .btn.primary:hover:not(:disabled) { opacity: .88; background: var(--ink); }
+  .dialog .btn.primary:disabled { color: var(--dlg-bg); background: var(--ink); border-color: var(--ink); opacity: .3; }
+  .dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+  /* Ventana de nota (cuadrada) */
+  .note-dialog {
+    width: min(380px, calc(100vw - 32px));
+    aspect-ratio: 1;
+    max-height: calc(100dvh - 32px);
+    padding: 10px 16px 12px;
+    gap: 6px;
+    border-radius: var(--r-l);
+    border-color: color-mix(in srgb, var(--ink) 24%, transparent);
+  }
+  .note-dialog .dlg-head { margin-right: -8px; }
+  .dlg-date { font-size: 12px; font-weight: 500; opacity: .7; }
+  .field {
+    width: 100%;
+    margin: 0;
+    padding: 6px 0;
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    outline: none;
+  }
+  .field::placeholder { color: inherit; opacity: .5; }
+  .field.title { font-family: var(--font-title); font-size: 19px; font-weight: 600; border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent); }
+  .field.title:focus { border-bottom-color: currentColor; }
+  .field.text { flex: 1; min-height: 0; line-height: 1.45; resize: none; }
+  .colors { display: flex; align-items: center; gap: 9px; padding: 4px 2px; }
+  .swatch { position: relative; cursor: pointer; }
+  .swatch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+  .dot {
+    display: block;
+    width: 22px;
+    height: 22px;
+    background: var(--c, transparent);
+    border: 1px solid color-mix(in srgb, var(--ink) 35%, transparent);
+    border-radius: 50%;
+  }
+  .dot.auto { border-style: dashed; }
+  .swatch input:checked + .dot { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .swatch input:focus-visible + .dot { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .dlg-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+  .del { margin-right: auto; margin-left: -8px; }
+  .del span { display: none; font-size: 12px; font-weight: 500; }
+  .del.armed { width: auto; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; }
+  .del.armed span { display: inline; }
+  .note-dialog .dlg-foot .btn { padding: 0 10px; font-size: 13px; white-space: nowrap; }
+  /* Acción secundaria (Guardar): transparente, con el tono de tinta de la nota */
+  .note-dialog .dlg-foot .btn:not(.main) { color: var(--ink); background: transparent; border-color: color-mix(in srgb, var(--ink) 45%, transparent); }
+  .note-dialog .dlg-foot .btn:not(.main):hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 10%, transparent); }
+  .note-dialog .dlg-foot .btn:not(.main):disabled { color: var(--ink); background: transparent; border-color: color-mix(in srgb, var(--ink) 45%, transparent); opacity: .35; }
+  /* Acción principal (Tildar / Destildar): sobre nota pastel, negro con letra clara; sin color, sigue el contraste del tema */
+  .note-dialog .dlg-foot .btn.main { color: var(--pure-inv); background: var(--pure); border-color: var(--pure); }
+  .note-dialog .dlg-foot .btn.main:hover:not(:disabled) { background: var(--pure); opacity: .85; }
+  .note-dialog .dlg-foot .btn.main:disabled { color: var(--pure-inv); background: var(--pure); border-color: var(--pure); opacity: .3; }
+
+  /* Tablero del día (horizontal si el viewport lo permite) */
+  .board {
+    width: min(960px, calc(100vw - 32px));
+    height: min(560px, calc(100dvh - 32px));
+    outline: none;
+  }
+  .board .dlg-head { padding: 12px 12px 12px 18px; border-bottom: 1px solid var(--line); }
+  .board h2 { margin: 0; font-family: var(--font-title); font-size: 22px; font-weight: 600; }
+  .board .count { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+  .dlg-actions { display: flex; align-items: center; gap: 2px; }
+  .clear span { display: none; font-size: 12px; font-weight: 500; }
+  .clear.armed { width: auto; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; }
+  .clear.armed span { display: inline; }
+  .board-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 28px 20px;
+    background: var(--weekend);
+    border-radius: 0 0 15px 15px;
+  }
+  .bcard {
+    position: relative;
+    width: 180px;
+    height: 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 14px 30px;
+    color: var(--note-ink);
+    background: var(--c);
+    border-radius: var(--r-s);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .07), 0 2px 5px rgba(0, 0, 0, .22);
+    transform: rotate(var(--br, 0deg));
+    transition: transform .22s cubic-bezier(.3, .7, .3, 1), box-shadow .22s;
+    overflow: hidden;
+    cursor: grab;
+    user-select: none;
+  }
+  .bcard:hover, .bcard:focus-visible { z-index: 2; transform: rotate(0deg); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .07), 0 6px 14px rgba(0, 0, 0, .26); }
+  .bgrid { display: grid; grid-template-columns: repeat(auto-fill, 180px); justify-content: center; gap: 26px 22px; }
+  .bsec { margin: 34px 0 24px; padding-top: 18px; font-family: var(--font-title); font-size: 17px; font-weight: 600; text-align: center; color: var(--muted); border-top: 1px solid var(--line-strong); }
+  .bcard.done { opacity: .6; }
+  .bcard.done:hover { opacity: 1; }
+  .bcard.done .t { text-decoration: line-through; }
+  .bcard.dragging { opacity: .35; }
+  .chk { position: absolute; right: 8px; bottom: 8px; z-index: 1; width: 20px; height: 20px; padding: 0; display: grid; place-items: center; color: inherit; background: transparent; border: 1.5px solid currentColor; border-radius: 50%; opacity: .55; cursor: pointer; }
+  .chk .i { width: 12px; height: 12px; stroke-width: 2.4; opacity: 0; }
+  .chk:hover, .chk:focus-visible { opacity: 1; }
+  .chk:hover .i { opacity: .5; }
+  .chk[aria-pressed="true"] { opacity: 1; color: var(--c); background: var(--note-ink); border-color: var(--note-ink); }
+  .chk[aria-pressed="true"] .i { opacity: 1; }
+  .bcard .t, .bcard .x { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .bcard .t { -webkit-line-clamp: 2; font-family: var(--font-title); font-size: 18px; font-weight: 600; line-height: 1.2; }
+  .bcard .x { -webkit-line-clamp: 4; font-size: 13.5px; line-height: 1.4; white-space: pre-wrap; }
+  .bcard.nt .x { -webkit-line-clamp: 7; }
+  .tile {
+    width: 180px;
+    height: 180px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    color: var(--muted);
+    background: transparent;
+    border: 1.5px dashed var(--line-strong);
+    border-radius: var(--r-s);
+    cursor: pointer;
+  }
+  .tile:hover { color: var(--fg); background: var(--line); }
+  .tile .i { width: 22px; height: 22px; }
+
+  /* Confirmación al salir sin guardar */
+  #confirmLayer { z-index: 70; }
+  .confirm-dialog { width: min(340px, calc(100vw - 32px)); padding: 20px; gap: 18px; outline: none; }
+  .confirm-dialog p { margin: 0; font-family: var(--font-title); font-size: 20px; line-height: 1.25; }
+  @media (prefers-reduced-motion: reduce) { .bcard { transition: none; } }
+
+  /* Pantallas grandes: el calendario ocupa el 80% de la pantalla, con 10% de aire arriba, abajo y a los lados */
+  @media (min-width: 1000px) and (min-height: 720px) {
+    body { padding-block: 10dvh; padding-inline: max(16px, 10vw); }
+  }
+  /* Celdas chicas (ventana angosta o vertical): las notas pasan a ser fichas diminutas abajo a la derecha */
+  .cal.sm .num .y { display: none; }
+  .cal.sm .add { top: 3px; right: 3px; width: 18px; height: 18px; }
+  .cal.sm .add .i { width: 10px; height: 10px; }
+  .cal.sm .stack { top: auto; left: auto; right: 4px; bottom: 4px; width: auto; height: 14px; display: flex; align-items: center; flex-direction: row-reverse; gap: 2px; container-type: normal; }
+  .cal.sm .note { position: static; flex: none; width: 12px; height: 12px; padding: 0; transform: rotate(var(--rot, 0deg)); animation: none; }
+  .cal.sm .note:hover, .cal.sm .note:focus-visible { transform: rotate(0deg) scale(1.3); }
+  .cal.sm .note .t, .cal.sm .note .x { display: none; }
+  .cal.sm .more { position: static; flex: none; height: 12px; min-width: 16px; padding: 0 3px; font-size: 9px; border-radius: 6px; }
+  @media (max-width: 560px) {
+    h1 { order: 3; flex-basis: 100%; margin-left: 0; }
+    .hd { padding: 6px 4px; text-align: center; }
+    .cell { padding: 4px; }
+    .note .t, .note .x { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .note.new, .dialog { animation: none; }
+    .add { transition: none; }
+  }
+</style>
+
+<header class="bar">
+  <div class="bar-left">
+    <button id="goToday" class="btn" type="button" disabled>Ir a esta semana</button>
+    <div class="nav">
+      <button id="prev" class="icon" type="button" data-tip="Retroceder" aria-label="Retroceder">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>
+      </button>
+      <button id="next" class="icon" type="button" data-tip="Avanzar" aria-label="Avanzar">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+    </div>
+    <h1 id="title"></h1>
+  </div>
+
+  <div class="settings-wrap">
+    <button id="settingsBtn" class="icon" type="button" data-tip="Configuración" aria-label="Configuración" aria-expanded="false" aria-controls="panel">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+    <section id="panel" class="panel" role="dialog" aria-label="Configuración" hidden>
+      <fieldset>
+        <legend>Tema</legend>
+        <div id="segTheme" class="seg"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Semanas por paso de rueda</legend>
+        <div id="segStep" class="seg"></div>
+        <p class="hint">«Mes» salta a la primera semana del mes siguiente o anterior.</p>
+      </fieldset>
+      <div>
+        <label class="label" for="weekStart">Primer día de la semana</label>
+        <select id="weekStart"></select>
+      </div>
+      <fieldset>
+        <legend>Tachar días pasados</legend>
+        <div id="segStrike" class="seg"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Días visibles</legend>
+        <div id="chips" class="chips"></div>
+      </fieldset>
+      <fieldset id="syncBox" hidden>
+        <legend>Sincronización</legend>
+        <div class="syncrow">
+          <span id="syncState" class="hint"></span>
+          <button id="syncBtn" class="icon" type="button"></button>
+        </div>
+      </fieldset>
+    </section>
+  </div>
+</header>
+<p id="warn" class="warn" role="status" hidden>Este navegador no permite guardar datos: las notas se perderán al cerrar o recargar la página.</p>
+
+<main id="cal" class="cal" tabindex="-1" aria-label="Calendario">
+  <div id="head" class="head"></div>
+  <div id="gridwrap" class="gridwrap"><div id="grid" class="grid"></div></div>
+</main>
+
+<!-- Tablero del día -->
+<div id="boardLayer" class="layer" hidden>
+  <div class="scrim" id="boardScrim"></div>
+  <section id="board" class="dialog board" role="dialog" aria-modal="true" aria-labelledby="boardTitle" tabindex="-1">
+    <header class="dlg-head">
+      <div>
+        <h2 id="boardTitle"></h2>
+        <p id="boardCount" class="count"></p>
+      </div>
+      <div class="dlg-actions">
+        <button id="boardClear" class="icon clear" type="button" data-tip="Limpiar tablero" aria-label="Limpiar tablero" hidden>
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+          <span>¿Vaciar?</span>
+        </button>
+        <button id="boardClose" class="icon" type="button" data-tip="Cerrar" aria-label="Cerrar">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </header>
+    <div id="boardBody" class="board-body"></div>
+  </section>
+</div>
+
+<!-- Ventana de nota -->
+<div id="noteLayer" class="layer" hidden>
+  <div class="scrim" id="noteScrim"></div>
+  <form id="noteForm" class="dialog note-dialog" role="dialog" aria-modal="true" aria-labelledby="noteDate" novalidate>
+    <header class="dlg-head">
+      <span id="noteDate" class="dlg-date"></span>
+      <button id="noteClose" class="icon" type="button" data-tip="Cerrar" aria-label="Cerrar">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <input id="noteTitle" class="field title" type="text" placeholder="Título (opcional)" maxlength="80" autocomplete="off" aria-label="Título">
+    <textarea id="noteText" class="field text" placeholder="Escribí tu nota…" maxlength="2000" aria-label="Texto"></textarea>
+    <div id="colors" class="colors" role="radiogroup" aria-label="Color"></div>
+    <footer class="dlg-foot">
+      <button id="noteDelete" class="icon del" type="button" data-tip="Eliminar" aria-label="Eliminar nota" hidden>
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>
+        <span>¿Eliminar?</span>
+      </button>
+      <button id="noteSave" class="btn" type="button" disabled>Guardar</button>
+      <button id="noteComplete" class="btn main" type="button" hidden>Tildar</button>
+    </footer>
+  </form>
+</div>
+
+<!-- Confirmación al cerrar una nota con cambios -->
+<div id="confirmLayer" class="layer" hidden>
+  <div class="scrim" id="confirmScrim"></div>
+  <div id="confirm" class="dialog confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmMsg" tabindex="-1">
+    <p id="confirmMsg">¿Estás seguro/a de salir sin guardar los cambios?</p>
+    <div class="dlg-foot">
+      <button id="confirmKeep" class="btn" type="button">Seguir editando</button>
+      <button id="confirmLeave" class="btn primary" type="button">Salir sin guardar</button>
+    </div>
+  </div>
+</div>
+
+<div id="tip" class="tip" role="tooltip" hidden></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const WD = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  const WD_FULL = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const MON_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  // Colores de las notas, en este orden
+  const COLORS = [['celeste', 'Celeste'], ['rosa', 'Rosa'], ['amarillo', 'Amarillo'], ['naranja', 'Naranja'], ['verde', 'Verde'], ['violeta', 'Violeta']];
+  const COLOR_KEYS = COLORS.map(c => c[0]);
+  const CHECK = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>';
+  const PLUS = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+
+  /* <logic> */
+  // Los días se cuentan como enteros desde 1970-01-01 (UTC) para evitar problemas de horario de verano.
+  const DAY = 86400000;
+  const toDn = (y, m, d) => Math.floor(Date.UTC(y, m, d) / DAY);
+  const fromDn = dn => { const t = new Date(dn * DAY); return { y: t.getUTCFullYear(), m: t.getUTCMonth(), d: t.getUTCDate(), wd: t.getUTCDay() }; };
+  const monthIdx = dn => { const t = fromDn(dn); return t.y * 12 + t.m; };
+  const weekStartOf = (dn, ws) => dn - ((fromDn(dn).wd - ws + 7) % 7);
+  const firstWeekOfMonth = (mi, ws) => weekStartOf(toDn(Math.floor(mi / 12), mi % 12, 1), ws);
+  // Semana que queda arriba después de un paso. step: 1 o 2 semanas, o 'month'.
+  function nextTop(top, dir, step, ws) {
+    if (step !== 'month') return top + dir * 7 * step;
+    const ref = monthIdx(top + 3);
+    let m;
+    if (dir > 0) { m = ref - 2; do { m++; } while (firstWeekOfMonth(m, ws) <= top); }
+    else { m = ref + 2; do { m--; } while (firstWeekOfMonth(m, ws) >= top); }
+    return firstWeekOfMonth(m, ws);
+  }
+  /* </logic> */
+
+  const todayDn = () => { const n = new Date(); return toDn(n.getFullYear(), n.getMonth(), n.getDate()); };
+  const iso = t => `${t.y}-${String(t.m + 1).padStart(2, '0')}-${String(t.d).padStart(2, '0')}`;
+  const keyOf = dn => iso(fromDn(dn));
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const rot = id => [-2.6, 2.2, -1.4, 1.8, -2, 1.2][id.charCodeAt(id.length - 1) % 6]; // leve inclinación fija por nota
+  // Formato de fecha en toda la app: d mmm aaaa (10 ene 2026)
+  function dateLabel(dn) {
+    const t = fromDn(dn);
+    return `${WD_FULL[t.wd]} ${t.d} ${MON_SHORT[t.m]} ${t.y}`;
+  }
+
+  // Almacenamiento local (puede fallar en ventanas privadas)
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  };
+  // Sincronización opcional (Firebase, plan Spark). Completá estos datos con los de tu app web de Firebase;
+  // si quedan vacíos, la app funciona solo con el almacenamiento del navegador.
+  const FIREBASE_CONFIG = { apiKey: 'AIzaSyA-WoiHdAQ-pr-MQSoXc-CFsPKtVpCR2EU', authDomain: 'cal4-0.firebaseapp.com', projectId: 'cal4-0', appId: '1:356553405372:web:44622fed0cb82f276771b9' };
+
+  const SET_KEY = 'calendario.ajustes';
+  const POS_KEY = 'calendario.posicion';
+  const NOTES_KEY = 'calendario.notas';
+
+  const DEFAULTS = { theme: 'system', step: 1, weekStart: 1, days: [0, 1, 2, 3, 4, 5, 6], strike: false };
+  function loadSettings() {
+    const s = Object.assign({}, DEFAULTS, store.get(SET_KEY) || {});
+    if (!['system', 'light', 'dark'].includes(s.theme)) s.theme = 'system';
+    if (s.step !== 'month') s.step = Number.isInteger(s.step) && s.step >= 2 ? 2 : 1; // valores viejos (3 o 4) pasan a 2
+    if (!Number.isInteger(s.weekStart) || s.weekStart < 0 || s.weekStart > 6) s.weekStart = 1;
+    s.days = Array.isArray(s.days) ? [...new Set(s.days.filter(d => Number.isInteger(d) && d >= 0 && d <= 6))] : [];
+    if (!s.days.length) s.days = DEFAULTS.days.slice();
+    s.strike = s.strike === true;
+    return s;
+  }
+  const saveSettings = () => store.set(SET_KEY, settings);
+
+  const $ = id => document.getElementById(id);
+  const el = {
+    cal: $('cal'), head: $('head'), grid: $('grid'), wrap: $('gridwrap'), title: $('title'),
+    goToday: $('goToday'), prev: $('prev'), next: $('next'),
+    btn: $('settingsBtn'), panel: $('panel'), weekStart: $('weekStart'), chips: $('chips')
+  };
+
+  let settings = loadSettings();
+  let today = todayDn();
+  let top = store.get(POS_KEY);
+  top = Number.isInteger(top) ? weekStartOf(top, settings.weekStart) : weekStartOf(today, settings.weekStart);
+  let rows = 5;
+  let pos = top;      // posición mostrada, en días (con decimales mientras anima)
+  let target = top;   // posición a la que se dirige
+  let raf = 0, lastT = 0;
+  const built = { first: null, dirty: true };
+  let justAdded = null; // id de la nota que acaba de crearse (para animarla una sola vez)
+
+  // ---- Notas: { 'AAAA-MM-DD': [ {id, title, text, color}, ... ] }; la última de la lista queda arriba de la pila ----
+  function loadNotes() {
+    const raw = store.get(NOTES_KEY);
+    const out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    for (const [k, arr] of Object.entries(raw)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || !Array.isArray(arr)) continue;
+      const list = arr.filter(n => n && typeof n === 'object').map(n => ({
+        id: String(n.id || '').replace(/[^a-z0-9]/gi, '') || newId(),
+        title: String(n.title || '').slice(0, 80),
+        text: String(n.text || '').slice(0, 2000),
+        color: COLOR_KEYS.includes(n.color) ? n.color : 'amarillo',
+        done: n.done === true
+      })).filter(n => n.title || n.text);
+      if (list.length) out[k] = list;
+    }
+    return out;
+  }
+  const hadNotes = store.get(NOTES_KEY) !== null;
+  const notes = loadNotes();
+  const saveNotes = () => { if (!store.set(NOTES_KEY, notes)) $('warn').hidden = false; syncLocal(); }; // sin almacenamiento: avisar
+  const notesFor = dn => notes[keyOf(dn)] || [];
+
+  // ---- Sincronización: Google + Firestore (users/{uid}/notes/{id}). Gana la versión más reciente de cada nota ----
+  const meta = Object.assign({ u: {}, sig: {} }, store.get('calendario.meta') || {}); // u: última modificación; sig: estado ya visto
+  const saveMeta = () => store.set('calendario.meta', meta);
+  const sync = { fb: null, db: null, auth: null, uid: null, unsub: null };
+  const sigOf = (key, i, n) => [key, i, n.title, n.text, n.color, n.done ? 1 : 0].join('\u0001');
+  const findNote = id => {
+    for (const [key, list] of Object.entries(notes)) { const i = list.findIndex(n => n.id === id); if (i >= 0) return { key, i, n: list[i] }; }
+    return null;
+  };
+  // Detecta notas nuevas, editadas, movidas o borradas desde la última vez, les pone fecha y las sube
+  function syncLocal() {
+    const now = Date.now(), seen = new Set(), dirty = [];
+    for (const [key, list] of Object.entries(notes)) list.forEach((n, i) => {
+      seen.add(n.id);
+      const g = sigOf(key, i, n);
+      if (meta.sig[n.id] !== g) { meta.sig[n.id] = g; meta.u[n.id] = now; dirty.push(n.id); }
+    });
+    for (const id of Object.keys(meta.sig)) if (!seen.has(id)) { delete meta.sig[id]; meta.u[id] = now; dirty.push(id); } // borrada
+    saveMeta();
+    dirty.forEach(push);
+  }
+  function push(id) {
+    if (!sync.uid) return;
+    const f = findNote(id);
+    const data = f ? { day: f.key, o: f.i, title: f.n.title, text: f.n.text, color: f.n.color, done: !!f.n.done, u: meta.u[id], del: false } : { del: true, u: meta.u[id] };
+    sync.fb.setDoc(sync.fb.doc(sync.db, 'users', sync.uid, 'notes', id), data).catch(() => setSyncState('error'));
+  }
+  function applyRemote(docs) {
+    const remote = new Map(), days = new Set();
+    let changed = false;
+    for (const d of docs) {
+      if (!/^[a-z0-9]+$/i.test(d.id)) continue;
+      remote.set(d.id, d);
+      if (!(d.u > (meta.u[d.id] || 0))) continue; // lo local es igual o más nuevo
+      const cur = findNote(d.id);
+      if (cur) { notes[cur.key].splice(cur.i, 1); days.add(cur.key); }
+      meta.u[d.id] = d.u; changed = true;
+      if (d.del || !/^\d{4}-\d{2}-\d{2}$/.test(d.day)) { delete meta.sig[d.id]; continue; }
+      (notes[d.day] = notes[d.day] || []).push({
+        id: d.id, title: String(d.title || '').slice(0, 80), text: String(d.text || '').slice(0, 2000),
+        color: COLOR_KEYS.includes(d.color) ? d.color : 'amarillo', done: d.done === true, _o: Number.isFinite(d.o) ? d.o : 1e9
+      });
+      days.add(d.day);
+    }
+    for (const key of days) { // respeta el orden remoto y deja ese estado como ya visto (sin volver a subirlo)
+      const list = (notes[key] || []).map((n, i) => [n._o === undefined ? i : n._o, i, n]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(x => x[2]);
+      list.forEach((n, i) => { delete n._o; meta.sig[n.id] = sigOf(key, i, n); });
+      if (list.length) notes[key] = list; else delete notes[key];
+    }
+    if (changed) {
+      store.set(NOTES_KEY, notes);
+      built.dirty = true; paint();
+      if (!layers.board.hidden) renderBoard();
+    }
+    saveMeta();
+    for (const id of Object.keys(meta.u)) { const r = remote.get(id); if (!r || r.u < meta.u[id]) push(id); } // cambios hechos sin conexión
+  }
+  const IN_ICON = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>';
+  const OUT_ICON = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>';
+  function setSyncState(st) { // st: null (sin sesión), 'error' o el correo de la cuenta
+    const out = st === null || (st === 'error' && !sync.uid);
+    $('syncState').textContent = st === 'error' ? 'No se pudo sincronizar.' : st === null ? 'Sin sesión: las notas quedan solo en este dispositivo.' : st;
+    const b = $('syncBtn'), tip = sync.uid ? 'Salir' : 'Entrar con Google';
+    b.innerHTML = sync.uid ? OUT_ICON : IN_ICON;
+    b.setAttribute('data-tip', tip); b.setAttribute('aria-label', tip);
+  }
+  function onUser(user) {
+    if (sync.unsub) { sync.unsub(); sync.unsub = null; }
+    sync.uid = user ? user.uid : null;
+    if (!user) { setSyncState(null); return; }
+    setSyncState(user.email || 'Sesión iniciada');
+    syncLocal();
+    sync.unsub = sync.fb.onSnapshot(sync.fb.collection(sync.db, 'users', user.uid, 'notes'),
+      snap => { applyRemote(snap.docs.map(d => Object.assign({ id: d.id }, d.data()))); setSyncState(user.email || 'Sesión iniciada'); },
+      () => setSyncState('error'));
+  }
+  async function initSync() {
+    const c = FIREBASE_CONFIG;
+    if (!c.apiKey || !c.projectId) return; // sin configurar: la opción queda oculta
+    $('syncBox').hidden = false;
+    setSyncState(null);
+    try {
+      const base = 'https://www.gstatic.com/firebasejs/10.14.1/';
+      const [app, auth, fs] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js'), import(base + 'firebase-firestore.js')]);
+      const a = app.initializeApp(c);
+      sync.fb = Object.assign({}, auth, fs);
+      sync.auth = auth.getAuth(a); sync.db = fs.getFirestore(a);
+      auth.onAuthStateChanged(sync.auth, onUser);
+    } catch (e) { setSyncState('error'); }
+  }
+  $('syncBtn').addEventListener('click', () => {
+    if (!sync.fb) return;
+    if (sync.uid) sync.fb.signOut(sync.auth);
+    else sync.fb.signInWithPopup(sync.auth, new sync.fb.GoogleAuthProvider()).catch(e => { if (e && e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') setSyncState('error'); });
+  });
+
+  // Primera vez: unas notas de ejemplo para ver la pila y el tablero (se pueden borrar)
+  if (!hadNotes) {
+    const seed = (off, arr) => { notes[keyOf(today + off)] = arr.map(([title, text, color]) => ({ id: newId(), title, text, color })); };
+    seed(0, [['Llamar al contador', 'Consultar el vencimiento del monotributo.', 'celeste'], ['', 'Pasar por la verdulería.', 'verde']]);
+    seed(1, [['Entrega del informe', 'Revisar los gráficos y enviarlo antes de las 18.', 'naranja']]);
+    seed(3, [
+      ['Preparar la presentación', 'Armar las diapositivas y ensayar.', 'amarillo'],
+      ['', 'Comprar pilas', 'rosa'],
+      ['Llamar a mamá', '', 'violeta'],
+      ['Reservar mesa', 'Cena de las 21, para cuatro.', 'verde'],
+      ['Imprimir contrato', 'Dos copias, una firmada.', 'celeste']
+    ]);
+    saveNotes();
+  }
+
+  // Días visibles en orden, empezando por el primer día de la semana
+  function columns() {
+    const out = [];
+    for (let i = 0; i < 7; i++) {
+      const wd = (settings.weekStart + i) % 7;
+      if (settings.days.includes(wd)) out.push({ wd, off: i });
+    }
+    return out;
+  }
+  // Filas visibles: cómodas (≥136 px) y siempre las suficientes para que la celda nunca sea más alta que ancha
+  const computeRows = () => {
+    const h = el.wrap.clientHeight, w = el.wrap.clientWidth / columns().length;
+    return Math.max(2, Math.floor(h / 136), w > 0 ? Math.ceil(h / w) : 0);
+  };
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  // Primer día visible de un mes (si el 1 cae en un día oculto, es el siguiente visible)
+  const firstVisible = (y, m) => { let d = toDn(y, m, 1); while (!settings.days.includes(fromDn(d).wd)) d++; return d; };
+
+  // HTML de la pila de una celda (las tres últimas notas; la de arriba muestra texto)
+  function stackHtml(all) {
+    const list = all.filter(n => !n.done); // las tildadas no entran en la pila
+    if (!list.length) return '';
+    const vis = list.slice(-3).reverse();
+    return '<div class="stack">' + (list.length > 3 ? `<span class="more" aria-label="${list.length - 3} notas más">+${list.length - 3}</span>` : '') + vis.map((n, d) => {
+      let body = '';
+      if (d === 0) {
+        if (n.title) body += `<span class="t">${esc(n.title)}</span>`;
+        if (n.text) body += `<span class="x">${esc(n.text)}</span>`;
+      }
+      const cls = 'note' + (n.title ? ' ht' : '') + (n.id === justAdded ? ' new' : '');
+      return `<button type="button" class="${cls}" data-id="${n.id}" style="--c:var(--n-${n.color});--d:${d};--rot:${rot(n.id)}deg" aria-label="Nota: ${esc((n.title || n.text).slice(0, 60))}">${body}</button>`;
+    }).join('') + '</div>';
+  }
+
+  // Nota de arriba: tantas líneas de texto como entren (mínimo una), cortadas con "…"
+  function fitNotes() {
+    el.grid.querySelectorAll('.note .x').forEach(x => {
+      const n = x.parentElement, t = n.querySelector('.t'), cs = getComputedStyle(n);
+      const room = n.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - (t ? t.offsetHeight + (parseFloat(cs.rowGap) || 0) : 0);
+      const lh = parseFloat(getComputedStyle(x).lineHeight) || 15.6;
+      x.style.webkitLineClamp = Math.max(1, Math.floor(room / lh));
+    });
+  }
+  // Dibuja las filas que corresponden a `pos` y las desplaza con transform.
+  function paint() {
+    const cols = columns();
+    const rowH = el.wrap.clientHeight / rows;
+    const firstDn = top + Math.floor((pos - top) / 7) * 7;
+    if (built.dirty || built.first !== firstDn) {
+      let html = '';
+      for (let r = 0; r <= rows; r++) { // una fila extra para el desplazamiento parcial
+        let prev = null;
+        cols.forEach((c, i) => {
+          const dn = firstDn + r * 7 + c.off;
+          const t = fromDn(dn);
+          const mi = t.y * 12 + t.m;
+          const key = iso(t);
+          const cls = ['cell'];
+          if (c.wd === 0 || c.wd === 6) cls.push('we');
+          if (dn === today) cls.push('today');
+          const fv = firstVisible(t.y, t.m) === dn; // el 1, o el primer día visible si el 1 está oculto
+          if (fv) cls.push('first');
+          if (dn < today) cls.push('past');
+          if (mi !== monthIdx(dn - 7)) cls.push('mt');
+          if (prev !== null && mi !== monthIdx(prev)) cls.push('ml');
+          if (i === cols.length - 1) cls.push('lc');
+          const label = fv ? `${t.d} ${MON_SHORT[t.m]}<span class="y"> ${t.y}</span>` : t.d;
+          html += `<div class="${cls.join(' ')}" data-dn="${dn}">`
+            + `<button type="button" class="num" aria-label="Abrir tablero del ${WD_FULL[t.wd]} ${t.d} ${MON_SHORT[t.m]} ${t.y}"><time datetime="${key}">${label}</time></button>`
+            + `<button type="button" class="add" tabindex="-1" data-tip="Nueva nota" aria-label="Nueva nota">${PLUS}</button>`
+            + stackHtml(notes[key] || [])
+            + '</div>';
+          prev = dn;
+        });
+      }
+      el.grid.innerHTML = html;
+      fitNotes();
+      built.first = firstDn;
+      built.dirty = false;
+    }
+    el.grid.style.transform = `translate3d(0, ${-((pos - firstDn) / 7) * rowH}px, 0)`;
+  }
+
+  // Título (rango de meses visibles) y estado del botón "Ir a esta semana"
+  function updateChrome() {
+    const cols = columns();
+    const a = fromDn(top + cols[0].off);
+    const b = fromDn(top + (rows - 1) * 7 + cols[cols.length - 1].off);
+    if (a.y === b.y && a.m === b.m) el.title.textContent = `${MON_SHORT[a.m]} ${a.y}`;
+    else if (a.y === b.y) el.title.textContent = `${MON_SHORT[a.m]} - ${MON_SHORT[b.m]} ${a.y}`;
+    else el.title.textContent = `${MON_SHORT[a.m]} ${a.y} - ${MON_SHORT[b.m]} ${b.y}`;
+    el.goToday.disabled = top === weekStartOf(today, settings.weekStart);
+  }
+
+  // Recalcula todo: filas visibles, columnas, encabezado
+  function render() {
+    const cols = columns();
+    rows = computeRows();
+    el.cal.style.setProperty('--cols', cols.length);
+    el.cal.style.setProperty('--n', rows + 1);
+    el.cal.style.setProperty('--rowh', (el.wrap.clientHeight / rows) + 'px');
+    el.cal.classList.toggle('sm', el.wrap.clientHeight / rows < 110); // celdas chicas: notas como fichas
+    el.head.innerHTML = cols.map(c => `<div class="hd${c.wd === 0 || c.wd === 6 ? ' we' : ''}">${WD[c.wd]}</div>`).join('');
+    built.dirty = true;
+    updateChrome();
+    paint();
+  }
+
+  // Suavizado exponencial: cada cuadro recorre una fracción de la distancia que falta.
+  // Si llega otro paso a mitad de camino, solo cambia el destino y el movimiento sigue sin saltos.
+  function tick(now) {
+    const dt = Math.max(0, Math.min(64, now - lastT));
+    lastT = now;
+    pos += (target - pos) * (1 - Math.exp(-dt / 70));
+    if (Math.abs(target - pos) < 0.04) pos = target;
+    paint();
+    raf = pos === target ? 0 : requestAnimationFrame(tick);
+  }
+
+  function setTop(t) {
+    top = t;
+    target = t;
+    store.set(POS_KEY, top);
+    updateChrome();
+    if (reduceMotion.matches || Math.abs(target - pos) > 70) { // saltos largos o sin animación: directo
+      pos = target;
+      if (raf) { cancelAnimationFrame(raf); raf = 0; }
+      paint();
+    } else if (!raf) {
+      lastT = performance.now();
+      raf = requestAnimationFrame(tick);
+    }
+  }
+  const step = dir => setTop(nextTop(top, dir, settings.step, settings.weekStart));
+
+  // ---- Textos flotantes de los botones con solo ícono ----
+  const tipEl = $('tip');
+  let tipTimer = 0;
+  function hideTip() { clearTimeout(tipTimer); tipEl.hidden = true; }
+  function showTip(target, delay) {
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(() => {
+      if (!target.isConnected) return;
+      tipEl.textContent = target.dataset.tip;
+      tipEl.hidden = false;
+      const r = target.getBoundingClientRect();
+      const w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+      let x = r.left + r.width / 2 - w / 2;
+      x = Math.max(8, Math.min(x, window.innerWidth - w - 8));
+      let y = r.bottom + 6;
+      if (y + h > window.innerHeight - 8) y = r.top - h - 6;
+      tipEl.style.left = x + 'px';
+      tipEl.style.top = y + 'px';
+    }, delay);
+  }
+  document.addEventListener('pointerover', e => {
+    if (e.pointerType === 'touch') return;
+    const t = e.target.closest && e.target.closest('[data-tip]');
+    if (t && !t.contains(e.relatedTarget)) showTip(t, 400);
+  });
+  document.addEventListener('pointerout', e => {
+    const t = e.target.closest && e.target.closest('[data-tip]');
+    if (t && !t.contains(e.relatedTarget)) hideTip();
+  });
+  document.addEventListener('focusin', e => {
+    const t = e.target.closest && e.target.closest('[data-tip]');
+    if (t && e.target.matches(':focus-visible')) showTip(t, 0);
+  });
+  document.addEventListener('focusout', hideTip);
+  document.addEventListener('pointerdown', hideTip);
+  window.addEventListener('wheel', hideTip, { passive: true, capture: true });
+
+  // ---- Ventanas: nota y tablero ----
+  const layers = { note: $('noteLayer'), board: $('boardLayer'), confirm: $('confirmLayer') };
+  const topLayer = () => !layers.confirm.hidden ? layers.confirm : !layers.note.hidden ? layers.note : !layers.board.hidden ? layers.board : null;
+  const f = {
+    form: $('noteForm'), date: $('noteDate'), title: $('noteTitle'), text: $('noteText'),
+    colors: $('colors'), save: $('noteSave'), del: $('noteDelete'), close: $('noteClose'), complete: $('noteComplete')
+  };
+  const boardEl = { dlg: $('board'), title: $('boardTitle'), count: $('boardCount'), body: $('boardBody'), close: $('boardClose'), clear: $('boardClear') };
+  let noteCtx = null;   // { dn, id } de la nota abierta (id null = nota nueva)
+  let boardDn = null;   // día del tablero abierto
+  let noteReturn = null, boardReturn = null;
+  let armed = false, armTimer = 0;
+  let noteInit = null, confirmReturn = null; // estado inicial de la nota abierta, para detectar cambios
+  let noteDone = false; // la nota abierta está tildada
+
+  function refocus(node, fallback) {
+    if (node && node.isConnected) node.focus();
+    else if (fallback) fallback.focus();
+  }
+  function afterChange(newId) {
+    saveNotes();
+    built.dirty = true;
+    justAdded = newId || null;
+    paint();
+    justAdded = null;
+    if (!layers.board.hidden) renderBoard();
+  }
+
+  // Colores: primero el vacío (aleatorio, elegido por defecto) y después los seis en orden
+  f.colors.innerHTML = [['', 'Aleatorio']].concat(COLORS).map(([v, name]) =>
+    `<label class="swatch" data-tip="${name}"><input type="radio" name="color" value="${v}" aria-label="${name}"${v === '' ? ' checked' : ''}><span class="dot${v === '' ? ' auto' : ''}"${v ? ` style="--c:var(--n-${v})"` : ''}></span></label>`
+  ).join('');
+  function tint(v) { // la ventana toma el color elegido
+    if (v) {
+      f.form.style.setProperty('--dlg-bg', `var(--n-${v})`);
+      f.form.style.setProperty('--ink', 'var(--note-ink)');
+      f.form.style.setProperty('--pure', '#000000');     // el fondo pastel es claro en ambos temas:
+      f.form.style.setProperty('--pure-inv', '#ffffff'); // botón principal negro con letra clara
+    } else {
+      ['--dlg-bg', '--ink', '--pure', '--pure-inv'].forEach(k => f.form.style.removeProperty(k)); // vuelve a los colores del tema
+    }
+  }
+  function setColor(v) {
+    const input = f.colors.querySelector(`input[value="${v}"]`);
+    if (input) input.checked = true;
+    tint(v);
+  }
+  f.colors.addEventListener('change', e => { tint(e.target.value); syncSave(); });
+
+  const hasContent = () => f.title.value.trim() !== '' || f.text.value.trim() !== '';
+  // Nota nueva: "Guardar" se activa con contenido. Nota existente: "Guardar" solo se activa si hubo cambios.
+  const syncSave = () => {
+    const isNew = !noteCtx || !noteCtx.id;
+    f.save.disabled = isNew ? !hasContent() : !(hasContent() && noteDirty());
+    f.complete.disabled = !hasContent();
+  };
+  f.title.addEventListener('input', syncSave);
+  f.text.addEventListener('input', syncSave);
+  f.title.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); f.text.focus(); } });
+  f.form.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!f.save.disabled) commitNote(); }
+  });
+
+  function resetDelete() {
+    armed = false;
+    clearTimeout(armTimer);
+    f.del.classList.remove('armed');
+  }
+
+  function openNote(dn, id) {
+    const n = id ? notesFor(dn).find(x => x.id === id) : null;
+    if (id && !n) return;
+    hideTip();
+    noteCtx = { dn, id: n ? n.id : null };
+    noteReturn = document.activeElement;
+    f.date.textContent = dateLabel(dn);
+    f.title.value = n ? n.title : '';
+    f.text.value = n ? n.text : '';
+    setColor(n ? n.color : '');
+    noteDone = !!(n && n.done);
+    f.complete.hidden = !n;
+    f.complete.textContent = noteDone ? 'Destildar' : 'Tildar';
+    f.save.textContent = 'Guardar';
+    noteInit = { title: f.title.value, text: f.text.value, color: n ? n.color : '' };
+    f.del.hidden = !n;
+    resetDelete();
+    syncSave();
+    layers.note.hidden = false;
+    f.title.focus();
+  }
+  function closeNote() {
+    layers.note.hidden = true;
+    layers.confirm.hidden = true;
+    noteCtx = null;
+    noteInit = null;
+    resetDelete();
+    hideTip();
+    refocus(noteReturn, !layers.board.hidden ? boardEl.dlg : el.cal);
+  }
+  const noteDirty = () => !!noteInit && (f.title.value !== noteInit.title || f.text.value !== noteInit.text
+    || ((f.colors.querySelector('input:checked') || {}).value || '') !== noteInit.color);
+  function requestCloseNote() {
+    const isNew = !noteCtx || !noteCtx.id;
+    if (isNew ? !hasContent() : !noteDirty()) { closeNote(); return; } // nota nueva: solo cuenta lo escrito, no el color
+    confirmReturn = document.activeElement;
+    layers.confirm.hidden = false;
+    $('confirmKeep').focus();
+  }
+  function hideConfirm() { layers.confirm.hidden = true; refocus(confirmReturn, f.title); }
+  $('confirmKeep').addEventListener('click', hideConfirm);
+  $('confirmScrim').addEventListener('click', hideConfirm);
+  $('confirmLeave').addEventListener('click', closeNote); // closeNote también oculta la confirmación
+  f.close.addEventListener('click', requestCloseNote);
+  $('noteScrim').addEventListener('click', requestCloseNote);
+  // Guarda la nota abierta (nueva o existente) y cierra la ventana
+  function commitNote() {
+    if (!noteCtx || !hasContent()) return;
+    const title = f.title.value.trim();
+    const text = f.text.value.trim();
+    let color = (f.colors.querySelector('input:checked') || {}).value || '';
+    if (!color) color = COLOR_KEYS[Math.floor(Math.random() * COLOR_KEYS.length)]; // sin elección: al azar
+    const key = keyOf(noteCtx.dn);
+    let created = null;
+    if (noteCtx.id) {
+      const n = (notes[key] || []).find(x => x.id === noteCtx.id);
+      if (n) { n.title = title; n.text = text; n.color = color; n.done = noteDone; }
+    } else {
+      created = newId();
+      (notes[key] = notes[key] || []).push({ id: created, title, text, color, done: false });
+    }
+    closeNote();
+    afterChange(created);
+  }
+  f.save.addEventListener('click', () => { if (!f.save.disabled) commitNote(); });
+  f.form.addEventListener('submit', e => { e.preventDefault(); if (!f.save.disabled) commitNote(); });
+
+  // Tildar / Destildar (acción principal): guarda lo escrito, cierra la nota y la pasa a la otra sección
+  f.complete.addEventListener('click', () => {
+    if (!noteCtx || !noteCtx.id || !hasContent()) return;
+    noteDone = !noteDone;
+    commitNote();
+  });
+
+  f.del.addEventListener('click', () => {
+    if (!armed) { // primer clic: pide confirmación
+      armed = true;
+      f.del.classList.add('armed');
+      armTimer = setTimeout(resetDelete, 3000);
+      return;
+    }
+    if (!noteCtx || !noteCtx.id) return;
+    const key = keyOf(noteCtx.dn);
+    const list = notes[key] || [];
+    const i = list.findIndex(x => x.id === noteCtx.id);
+    if (i >= 0) list.splice(i, 1);
+    if (!list.length) delete notes[key];
+    closeNote();
+    afterChange(null);
+  });
+
+  // Tablero: todas las notas del día, reordenables arrastrando
+  // Inclinación aleatoria (±1 a 3°) fija mientras dure la sesión, para que no cambie al redibujar
+  const brot = new Map();
+  const bRot = id => { if (!brot.has(id)) brot.set(id, ((1 + Math.random() * 2) * (Math.random() < .5 ? -1 : 1)).toFixed(2)); return brot.get(id); };
+  function renderBoard() {
+    const list = notesFor(boardDn);
+    boardEl.title.textContent = dateLabel(boardDn);
+    const pend = list.filter(n => !n.done), done = list.filter(n => n.done);
+    const cnt = (k, one, many) => k === 1 ? `1 ${one}` : `${k} ${many}`;
+    boardEl.count.textContent = !list.length ? 'Sin notas' : [pend.length ? cnt(pend.length, 'nota', 'notas') : '', done.length ? cnt(done.length, 'tildada', 'tildadas') : ''].filter(Boolean).join(' · ');
+    resetClear();
+    boardEl.clear.hidden = list.length === 0;
+    const card = n => `<article class="bcard${n.title ? '' : ' nt'}${n.done ? ' done' : ''}" draggable="true" tabindex="0" role="button" data-id="${n.id}" data-r="${bRot(n.id)}" style="--c:var(--n-${n.color});--br:${bRot(n.id)}deg">`
+      + `<button type="button" class="chk" aria-pressed="${!!n.done}" aria-label="${n.done ? 'Destildar' : 'Tildar'}" data-tip="${n.done ? 'Destildar' : 'Tildar'}">${CHECK}</button>`
+      + (n.title ? `<div class="t">${esc(n.title)}</div>` : '')
+      + (n.text ? `<div class="x">${esc(n.text)}</div>` : '')
+      + '</article>';
+    // Dos secciones, una debajo de la otra: primero las pendientes (con el botón de nueva nota) y después las tildadas
+    boardEl.body.innerHTML = '<div class="bgrid">' + pend.map(card).join('')
+      + `<button type="button" class="tile" data-tip="Nueva nota" aria-label="Nueva nota">${PLUS}</button></div>`
+      + (done.length ? `<h3 class="bsec">Tildadas</h3><div class="bgrid">${done.map(card).join('')}</div>` : '');
+  }
+  function openBoard(dn) {
+    hideTip();
+    boardDn = dn;
+    boardReturn = document.activeElement;
+    renderBoard();
+    layers.board.hidden = false;
+    boardEl.dlg.focus();
+  }
+  function closeBoard() {
+    layers.board.hidden = true;
+    boardDn = null;
+    hideTip();
+    refocus(boardReturn, el.cal);
+  }
+  boardEl.close.addEventListener('click', closeBoard);
+
+  // Tildar una nota (o destildarla): cambia de sección en el tablero
+  function toggleDone(id) {
+    const n = notesFor(boardDn).find(x => x.id === id);
+    if (!n) return;
+    n.done = !n.done;
+    afterChange(null);
+    const c = boardEl.body.querySelector(`.bcard[data-id="${id}"] .chk`);
+    if (c) c.focus();
+  }
+
+  // Limpiar tablero: dos clics (el primero pide confirmación) y se borran todas las notas del día
+  let clearArmed = false, clearTimer = 0;
+  function resetClear() { clearArmed = false; clearTimeout(clearTimer); boardEl.clear.classList.remove('armed'); }
+  boardEl.clear.addEventListener('click', () => {
+    if (!clearArmed) { clearArmed = true; boardEl.clear.classList.add('armed'); clearTimer = setTimeout(resetClear, 3000); return; }
+    resetClear();
+    delete notes[keyOf(boardDn)];
+    afterChange(null);
+  });
+  $('boardScrim').addEventListener('click', closeBoard);
+
+  boardEl.body.addEventListener('click', e => {
+    if (e.target.closest('.tile')) { openNote(boardDn, null); return; }
+    const card = e.target.closest('.bcard');
+    if (card && e.target.closest('.chk')) { toggleDone(card.dataset.id); return; }
+    if (card) openNote(boardDn, card.dataset.id);
+  });
+  boardEl.body.addEventListener('keydown', e => {
+    const card = e.target.closest('.bcard');
+    if (card && !e.target.closest('.chk') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openNote(boardDn, card.dataset.id); }
+  });
+
+  let dragEl = null;
+  boardEl.body.addEventListener('dragstart', e => {
+    const card = e.target.closest('.bcard');
+    if (!card) return;
+    dragEl = card;
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', card.dataset.id);
+    hideTip();
+  });
+  // Reordenar con animación de papel: cada hoja se desliza a su nuevo lugar con una leve inclinación
+  function movePaper(mutate) {
+    const cards = [...boardEl.body.querySelectorAll('.bcard')];
+    const first = new Map(cards.map(c => [c, c.getBoundingClientRect()]));
+    mutate();
+    cards.forEach(c => c.getAnimations().forEach(an => an.cancel()));
+    if (reduceMotion.matches) return;
+    cards.forEach(c => {
+      const a = first.get(c), b = c.getBoundingClientRect();
+      const dx = a.left - b.left, dy = a.top - b.top;
+      if (!dx && !dy) return;
+      const r = Number(c.dataset.r) || 0;
+      const tilt = Math.max(-4, Math.min(4, dx / 30));
+      c.animate([
+        { transform: `translate(${dx}px, ${dy}px) rotate(${r}deg)` },
+        { transform: `translate(${dx * .4}px, ${dy * .4}px) rotate(${r + tilt}deg)`, offset: .45 },
+        { transform: `rotate(${r}deg)` }
+      ], { duration: 340, easing: 'cubic-bezier(.25, .8, .3, 1)' });
+    });
+  }
+  let lastSwap = 0;
+  boardEl.body.addEventListener('dragover', e => {
+    if (!dragEl) return;
+    e.preventDefault();
+    const over = e.target.closest('.bcard, .tile');
+    if (!over || over === dragEl || over.parentNode !== dragEl.parentNode || performance.now() - lastSwap < 180) return;
+    let ref;
+    if (over.classList.contains('tile')) ref = over;
+    else {
+      const r = over.getBoundingClientRect();
+      const dr = dragEl.getBoundingClientRect();
+      const sameRow = Math.abs(dr.top - r.top) < 30;
+      const after = sameRow ? e.clientX > r.left + r.width / 2 : e.clientY > r.top + r.height / 2;
+      ref = after ? over.nextSibling : over;
+    }
+    if (ref === dragEl || dragEl.nextSibling === ref) return;
+    lastSwap = performance.now();
+    movePaper(() => dragEl.parentNode.insertBefore(dragEl, ref));
+  });
+  boardEl.body.addEventListener('drop', e => e.preventDefault());
+  boardEl.body.addEventListener('dragend', () => {
+    if (!dragEl) return;
+    dragEl.classList.remove('dragging');
+    dragEl = null;
+    const key = keyOf(boardDn);
+    const list = notes[key] || [];
+    const byId = new Map(list.map(n => [n.id, n]));
+    const next = [...boardEl.body.querySelectorAll('.bcard[data-id]')].map(c => byId.get(c.dataset.id)).filter(Boolean);
+    if (next.length === list.length) { notes[key] = next; afterChange(null); } // el orden define la pila del calendario
+  });
+
+  // Clics en el calendario: + = nota nueva; nota = abrirla; número o cualquier otro lugar de la celda = tablero del día
+  el.grid.addEventListener('click', e => {
+    const cell = e.target.closest('.cell');
+    if (!cell) return;
+    const dn = Number(cell.dataset.dn);
+    if (e.target.closest('.add')) { openNote(dn, null); return; }
+    const note = e.target.closest('.note');
+    if (note) { openNote(dn, note.dataset.id); return; }
+    openBoard(dn);
+  });
+
+  // Mantiene el foco dentro de la ventana abierta
+  function trapTab(e) {
+    const layer = topLayer();
+    const items = [...layer.querySelectorAll('button:not([disabled]), input, textarea, [tabindex="0"]')]
+      .filter(x => !x.hidden && (x.type !== 'radio' || x.checked) && (x.offsetParent !== null || x === document.activeElement));
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    const act = document.activeElement;
+    if (!layer.contains(act) || (e.shiftKey && (act === first || act === layer.querySelector('.dialog')))) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+    else if (!e.shiftKey && act === last) { e.preventDefault(); first.focus(); }
+  }
+
+  // ---- Entrada: rueda, táctil y teclado ----
+  let acc = 0, lastEvt = 0, lastMove = 0;
+  el.cal.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    const now = performance.now();
+    if (now - lastEvt > 200) acc = 0;
+    lastEvt = now;
+    if (now - lastMove < 70) return;
+    let dy = e.deltaY;
+    if (e.deltaMode === 1) dy *= 33; else if (e.deltaMode === 2) dy *= 300;
+    acc += dy;
+    if (Math.abs(acc) >= 40) {
+      step(acc > 0 ? 1 : -1);
+      acc = 0;
+      lastMove = now;
+    }
+  }, { passive: false });
+
+  let touchY = null;
+  el.cal.addEventListener('touchstart', e => { touchY = e.touches[0].clientY; }, { passive: true });
+  el.cal.addEventListener('touchmove', e => {
+    if (touchY === null) return;
+    const y = e.touches[0].clientY;
+    if (Math.abs(touchY - y) >= 50) { step(touchY - y > 0 ? 1 : -1); touchY = y; }
+  }, { passive: true });
+  el.cal.addEventListener('touchend', () => { touchY = null; });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (!layers.confirm.hidden) { hideConfirm(); return; }
+      if (!layers.note.hidden) { requestCloseNote(); return; }
+      if (!layers.board.hidden) { closeBoard(); return; }
+      if (!el.panel.hidden) { openPanel(false); el.btn.focus(); return; }
+    }
+    if (e.key === 'Tab' && topLayer()) { trapTab(e); return; }
+    if (topLayer()) return;
+    if (e.target.closest('select, input, textarea')) return;
+    if (e.key === 'ArrowDown' || e.key === 'PageDown') { e.preventDefault(); step(1); }
+    else if (e.key === 'ArrowUp' || e.key === 'PageUp') { e.preventDefault(); step(-1); }
+  });
+
+  el.prev.addEventListener('click', () => step(-1));
+  el.next.addEventListener('click', () => step(1));
+  el.goToday.addEventListener('click', () => {
+    const t = weekStartOf(today, settings.weekStart);
+    if (t === top) return;
+    setTop(t);
+    el.cal.focus();
+  });
+
+  // ---- Configuración ----
+  const hostTheme = document.documentElement.getAttribute('data-theme');
+  function applyTheme() {
+    const v = settings.theme === 'system' ? hostTheme : settings.theme;
+    if (v) document.documentElement.setAttribute('data-theme', v);
+    else document.documentElement.removeAttribute('data-theme');
+  }
+
+  const applyStrike = () => el.cal.classList.toggle('strike', settings.strike);
+
+  function seg(host, name, options, current, onChange) {
+    host.innerHTML = options.map(([v, label]) =>
+      `<label><input type="radio" name="${name}" value="${v}"${String(v) === String(current) ? ' checked' : ''}><span>${label}</span></label>`
+    ).join('');
+    host.addEventListener('change', e => onChange(e.target.value));
+  }
+
+  function buildChips() {
+    el.chips.innerHTML = '';
+    for (let i = 0; i < 7; i++) {
+      const wd = (settings.weekStart + i) % 7;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.textContent = WD[wd];
+      b.setAttribute('aria-pressed', settings.days.includes(wd));
+      b.addEventListener('click', () => toggleDay(wd));
+      el.chips.append(b);
+    }
+  }
+  function toggleDay(wd) {
+    const on = settings.days.includes(wd);
+    if (on && settings.days.length === 1) return; // al menos un día visible
+    settings.days = on ? settings.days.filter(d => d !== wd) : [...settings.days, wd];
+    saveSettings();
+    buildChips();
+    render();
+  }
+
+  function openPanel(open) {
+    el.panel.hidden = !open;
+    el.btn.setAttribute('aria-expanded', String(open));
+  }
+  el.btn.addEventListener('click', () => openPanel(el.panel.hidden));
+  document.addEventListener('pointerdown', e => {
+    if (!el.panel.hidden && !e.target.closest('.settings-wrap')) openPanel(false);
+  });
+
+  seg($('segTheme'), 'theme', [['system', 'Sistema'], ['light', 'Claro'], ['dark', 'Oscuro']], settings.theme, v => {
+    settings.theme = v; saveSettings(); applyTheme();
+  });
+  seg($('segStep'), 'step', [[1, '1'], [2, '2'], ['month', 'Mes']], settings.step, v => {
+    settings.step = v === 'month' ? 'month' : Number(v); saveSettings();
+  });
+  seg($('segStrike'), 'strike', [['0', 'No'], ['1', 'Sí']], settings.strike ? '1' : '0', v => {
+    settings.strike = v === '1'; saveSettings(); applyStrike();
+  });
+  el.weekStart.innerHTML = [1, 2, 3, 4, 5, 6, 0].map(wd => `<option value="${wd}">${cap(WD_FULL[wd])}</option>`).join('');
+  el.weekStart.value = String(settings.weekStart);
+  el.weekStart.addEventListener('change', () => {
+    settings.weekStart = Number(el.weekStart.value);
+    saveSettings();
+    top = weekStartOf(top, settings.weekStart);
+    pos = target = top;
+    store.set(POS_KEY, top);
+    buildChips();
+    render();
+  });
+
+  // ---- Arranque ----
+  initSync();
+  applyTheme();
+  applyStrike();
+  buildChips();
+  render();
+  new ResizeObserver(() => render()).observe(el.wrap);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { built.dirty = true; paint(); }); // reajusta el texto cuando cargan las fuentes
+
+  // Si cambia el día (medianoche o PC dormida), actualizar "hoy"
+  const checkToday = () => { const t = todayDn(); if (t !== today) { today = t; render(); } };
+  setInterval(checkToday, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkToday(); });
+})();
+</script>
+
+</body></html>
